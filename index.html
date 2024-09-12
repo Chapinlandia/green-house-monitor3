@@ -1,55 +1,204 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+    <link rel="manifest" href="/manifest.json">
+
+    <script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/service-worker.js')
+      .then(() => console.log('Service Worker registrado'))
+      .catch((error) => console.log('Service Worker error:', error));
+  }
+</script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Página de Inicio</title>
+    <title>Monitor GREEN HOUSE</title>
+
     <style>
         body {
             font-family: Arial, sans-serif;
-            background-color: #f4f4f4;
-            margin: 0;
-            padding: 0;
             text-align: center;
-        }
-        header {
-            background-color: #4CAF50;
-            color: white;
-            padding: 15px;
-            font-size: 24px;
-        }
-        section {
-            margin: 20px;
             padding: 20px;
-            background-color: white;
+            background-color: #f4f4f9;
+            margin: 0;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            max-width: 600px;
+            margin: auto;
+        }
+        .status {
+            font-size: 1.5em;
+            margin-bottom: 20px;
+            color: #007bff;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(1, 1fr);  /* Una columna para el layout */
+            gap: 15px;
+            width: 100%;
+        }
+        .box {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 50px;
+            color: white;
+            font-size: 1.2em;
+            font-weight: bold;
+            border-radius: 10px;
+            box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .open {
+            background-color: #007bff;  /* Azul cuando está abierto */
+        }
+        .close {
+            background-color: #dc3545;  /* Rojo cuando está cerrado */
+        }
+        .temperature {
+            background-color: #28a745; /* Verde para el marco de temperatura */
+        }
+        .humidity {
+            background-color: #ffc107; /* Amarillo para el marco de humedad */
+        }
+        .time {
+            background-color: #6c757d; /* Gris para la hora y fecha */
+        }
+        .input-container {
+            margin-bottom: 20px;
+        }
+        input {
+            padding: 10px;
             border-radius: 5px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            border: 1px solid #ccc;
+            font-size: 1em;
+            margin-right: 10px;
         }
-        h1 {
-            color: #333;
+        button {
+            padding: 10px 20px;
+            border-radius: 5px;
+            border: none;
+            background-color: #007bff;
+            color: white;
+            font-size: 1em;
+            cursor: pointer;
         }
-        p {
-            font-size: 18px;
-            color: #666;
-        }
-        footer {
-            margin-top: 20px;
-            color: #777;
-            font-size: 14px;
+        button:hover {
+            background-color: #0056b3;
         }
     </style>
+    <script>
+        let esp32Host;
+
+        // Cargar IP guardada o usar una por defecto
+        function loadIP() {
+            const savedIP = localStorage.getItem("esp32IP");
+            if (savedIP) {
+                esp32Host = savedIP;
+            } else {
+                esp32Host = "http://192.168.1.60";  // IP por defecto
+            }
+            document.getElementById("currentIP").innerHTML = "IP actual del ESP32: " + esp32Host;
+        }
+
+        // Función para actualizar la IP desde el input y guardarla en localStorage
+        function updateIP() {
+            let newIP = document.getElementById("ipInput").value;
+            esp32Host = "http://" + newIP;
+            localStorage.setItem("esp32IP", esp32Host);  // Guardar en localStorage
+            document.getElementById("currentIP").innerHTML = "IP actual del ESP32: " + esp32Host;
+            // Repetir las actualizaciones para usar la nueva IP
+            updateInputsStateESP32();
+            updateDHTData();
+            updateTime();
+        }
+
+        // Actualizar estados de las entradas del ESP32
+        function updateInputsStateESP32() {
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", esp32Host + "/getInputsState", true);
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState == 4 && xhr.status == 200) {
+                    var states = xhr.responseText.trim().split(',');
+                    for (var i = 0; i < 3; i++) {
+                        var stateElement = document.getElementById("state" + (i+1));
+                        stateElement.className = "box " + (states[i] === "OPEN" ? "open" : "close");
+                    }
+                    document.getElementById("status-esp32").innerHTML = "ESP32 Conectado";
+                } else if (xhr.readyState == 4) {
+                    document.getElementById("status-esp32").innerHTML = "ESP32 Desconectado";
+                }
+            };
+            xhr.send();
+        }
+
+        // Actualizar la temperatura y la humedad del DHT11
+        function updateDHTData() {
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", esp32Host + "/getDHTData", true);
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState == 4 && xhr.status == 200) {
+                    var dhtData = xhr.responseText.trim().split(' ');
+                    document.getElementById("temperature").innerHTML = "Temperatura: " + dhtData[1] + " °C";
+                    document.getElementById("humidity").innerHTML = "Humedad: " + dhtData[3] + " %";
+                }
+            };
+            xhr.send();
+        }
+
+        // Actualizar la hora y fecha del RTC DS3231
+        function updateTime() {
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", esp32Host + "/getTime", true);
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState == 4 && xhr.status == 200) {
+                    document.getElementById("time").innerHTML = xhr.responseText.trim();
+                }
+            };
+            xhr.send();
+        }
+
+        setInterval(updateInputsStateESP32, 500);  // Actualizar estados del ESP32 cada segundo
+        setInterval(updateDHTData, 5000);  // Actualizar temperatura y humedad cada 2 segundos
+        setInterval(updateTime, 1000);  // Actualizar hora y fecha cada 2 segundos
+        
+        window.onload = function() {
+            loadIP();  // Cargar la IP al inicio
+            updateInputsStateESP32();
+            updateDHTData();
+            updateTime();
+        };
+    </script>
 </head>
 <body>
-    <header>
-        Bienvenido al Servidor Web de Arduino
-    </header>
-    <section>
-        <h1>Página de Inicio</h1>
-        <p>Esta es una página HTML simple servida desde un servidor web local.</p>
-        <p>Puede ser accedida desde cualquier dispositivo en la red.</p>
-    </section>
-    <footer>
-        &copy; 2024 Mi Servidor Web Local
-    </footer>
+    <h1>ZONE 3-4</h1>
+    
+    <div class="container">
+        <!-- Input y botón para cambiar la IP del ESP32 -->
+        <div class="input-container">
+            <input type="text" id="ipInput" placeholder="NEW IP" />
+            <button onclick="updateIP()">Update IP</button>
+        </div>
+        <div id="currentIP" class="status">IP actual del ESP32: Cargando...</div>
+
+        <!-- Mostrar el estado de conexión de ESP32 -->
+        <div id="status-esp32" class="status">Comprobando conexión ESP32...</div>
+
+        <!-- Mostrar hora y fecha -->
+        
+
+        <!-- Mostrar temperatura y humedad -->
+        <div class="grid">
+            <div id="time" class="box time">Cargando fecha y hora...</div>
+            <div id="temperature" class="box temperature">Temperatura: -- °C</div>
+            <div id="humidity" class="box humidity">Humedad: -- %</div>
+            <!-- Entradas para ESP32 (1 a 2 en este ejemplo) -->
+            <div id="state1" class="box close">Entrada 1</div>
+            <div id="state2" class="box close">Entrada 2</div>
+            <div id="state3" class="box close">Entrada 3</div>
+        </div>
+    </div>
 </body>
 </html>
